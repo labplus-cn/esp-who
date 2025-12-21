@@ -1,4 +1,5 @@
 #include "who_lcd.h"
+#include <stdint.h>
 #include <string.h>
 #if CONFIG_MPYTHON_PRO_BOARD
 #include "logo_mpython_pro_320x172_lcd.h"
@@ -11,11 +12,20 @@
 #include "esp_lcd_panel_jd9853.h"
 #include "esp_lcd_panel_ops.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "esp_camera.h"
 #include "driver/i2c.h"
+#include "esp_timer.h"
+#include "esp_log.h"
 
 static const char *TAG = "who_lcd";
+
+#define AREA_BYTES 27520 //(43*320*2)
+#define AREA_WORD  13760
+#define AREA_LINES 43
+#define AREA_NUMS  4
 
 bool is_lcd_init = false;
 lcd_t *lcd = NULL;
@@ -25,17 +35,31 @@ static QueueHandle_t xQueueFrameI = NULL;
 static QueueHandle_t xQueueFrameO = NULL;
 static bool gReturnFB = true;
 #endif
-
-static bool on_color_trans_done_cb(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx)
-{
+ static uint8_t isr_cnt = 0;
+ static bool finish = false;
+static bool IRAM_ATTR lcd_dma_complete_callback(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
     lcd_t *lcd = (lcd_t *) user_ctx;
 
+    // 此处可在IRAM中快速处理，避免临界区
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    // 通知LVGL：这一帧刷完了，可以画下一帧了
     if (lcd->transfer_done_cb != NULL){
         lcd->transfer_done_cb(lcd->transfer_done_user_data);
     }
+   
+    isr_cnt++;
+    finish = true;
+    // 或者释放信号量，唤醒绘制任务
+    xSemaphoreGiveFromISR(lcd->dma_finish_sem, &xHigherPriorityTaskWoken);
 
-    return false;
+    if (xHigherPriorityTaskWoken == pdTRUE) {
+        // portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    }
+
+    return true;
 }
+
 
 static void lcd_SPI_init(void)
 {
@@ -45,6 +69,7 @@ static void lcd_SPI_init(void)
         .miso_io_num = BOARD_LCD_MISO,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
+        // .max_transfer_sz = AREA_BYTES, ,
         .max_transfer_sz = BOARD_LCD_H_RES * BOARD_LCD_V_RES * sizeof(uint16_t),
     };
     ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus_conf, SPI_DMA_CH_AUTO));
@@ -63,6 +88,15 @@ esp_err_t lcd_init(void)
 {
     if(!lcd){
         lcd = calloc(1, sizeof(lcd_t));
+        lcd->dma_finish_sem = xSemaphoreCreateBinary();
+        // lcd->lcd_buf = (uint16_t *)heap_caps_aligned_alloc(32, AREA_BYTES,   MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        lcd->lcd_buf = (uint16_t *)heap_caps_aligned_alloc(32, BOARD_LCD_H_RES*BOARD_LCD_V_RES*2,  MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        if(!lcd->lcd_buf){
+            ESP_LOGE("TAG", "lcd buff calloc error.");
+            return ESP_LOG_ERROR;
+        }
+        // memset(lcd->lcd_buf, 0, AREA_BYTES);
+        memset(lcd->lcd_buf, 0, BOARD_LCD_H_RES*BOARD_LCD_V_RES*2);
 
         lcd_SPI_init();
         lcd->bus_initialized = true;
@@ -75,7 +109,7 @@ esp_err_t lcd_init(void)
             .lcd_param_bits = BOARD_LCD_PARAM_BITS,
             .spi_mode = 0,
             .trans_queue_depth = 10,
-            .on_color_trans_done = on_color_trans_done_cb,
+            .on_color_trans_done = lcd_dma_complete_callback,
             .user_ctx = lcd,
         };
     
@@ -190,6 +224,34 @@ void lcd_set_color(int color)
 void lcd_draw_image(int x, int y, int width, int height, const void *buff)
 {
     esp_lcd_panel_draw_bitmap(lcd->panel, x, y, (width > 320)? 320 : width, (height > 172)? 172 : height, (uint16_t *)buff);
+}
+
+void lcd_flush(const void *buff)
+{
+    if(lcd){
+        uint16_t * buf = (uint16_t *)buff;
+        uint16_t * buf_tmp = (uint16_t *)lcd->lcd_buf;
+        // uint32_t t1 = esp_timer_get_time();
+        // uint32_t y_off = 0;
+        // for(uint8_t j = 0; j < AREA_NUMS; j++){
+        //     for(uint32_t i = 0; i < AREA_WORD; i++){
+        //         buf_tmp[i] = __builtin_bswap16(buf[y_off + i]);
+        //     }
+        //     esp_lcd_panel_draw_bitmap(lcd->panel, 0, AREA_LINES*j, BOARD_LCD_H_RES, AREA_LINES*(j+1), buf_tmp);
+            
+        //     // ESP_LOGE("modlcd", "%d\n", isr_cnt);
+        //     // xSemaphoreTake(lcd->dma_finish_sem, portMAX_DELAY);
+        //     // vTaskDelay(pdMS_TO_TICKS(8));
+        //     y_off += AREA_WORD;
+        // }
+
+        uint32_t cnt = BOARD_LCD_H_RES*BOARD_LCD_V_RES;
+        for(uint32_t i =0; i < cnt; i++ )
+            buf_tmp[i] = __builtin_bswap16(buf[i]);
+        esp_lcd_panel_draw_bitmap(lcd->panel, 0, 0, BOARD_LCD_H_RES, BOARD_LCD_V_RES, buf_tmp);
+
+        // ESP_LOGE("modlcd", "%ld\n", (uint32_t)esp_timer_get_time() - t1);  
+    }
 }
 
 lcd_t *get_lcd_handle(void)

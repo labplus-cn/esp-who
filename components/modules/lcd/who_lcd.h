@@ -20,7 +20,7 @@ extern "C"
     #define BOARD_LCD_DC 35
     #define BOARD_LCD_RST -1
     #define BOARD_LCD_BL 33
-    #define BOARD_LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000)
+    #define BOARD_LCD_PIXEL_CLOCK_HZ (60 * 1000 * 1000)
     #define BOARD_LCD_BK_LIGHT_ON_LEVEL 0
     #define BOARD_LCD_BK_LIGHT_OFF_LEVEL !BOARD_LCD_BK_LIGHT_ON_LEVEL
     #define BOARD_LCD_H_RES 320
@@ -42,7 +42,7 @@ extern "C"
     #define BOARD_LCD_DC 35
     #define BOARD_LCD_RST -1
     #define BOARD_LCD_BL -1
-    #define BOARD_LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000)
+    #define BOARD_LCD_PIXEL_CLOCK_HZ (60 * 1000 * 1000)
     #define BOARD_LCD_BK_LIGHT_ON_LEVEL 0
     #define BOARD_LCD_BK_LIGHT_OFF_LEVEL !BOARD_LCD_BK_LIGHT_ON_LEVEL
     #define BOARD_LCD_H_RES 320
@@ -66,7 +66,7 @@ extern "C"
     #define BOARD_LCD_DC 35
     #define BOARD_LCD_RST -1
     #define BOARD_LCD_BL 34
-    #define BOARD_LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000)
+    #define BOARD_LCD_PIXEL_CLOCK_HZ (60 * 1000 * 1000)
     #define BOARD_LCD_BK_LIGHT_ON_LEVEL 1
     #define BOARD_LCD_BK_LIGHT_OFF_LEVEL !BOARD_LCD_BK_LIGHT_ON_LEVEL
     #define BOARD_LCD_H_RES 320
@@ -90,7 +90,7 @@ extern "C"
     #define BOARD_LCD_DC 35
     #define BOARD_LCD_RST 47
     #define BOARD_LCD_BL 33
-    #define BOARD_LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000)
+    #define BOARD_LCD_PIXEL_CLOCK_HZ (60 * 1000 * 1000)
     #define BOARD_LCD_BK_LIGHT_ON_LEVEL 1
     #define BOARD_LCD_BK_LIGHT_OFF_LEVEL !BOARD_LCD_BK_LIGHT_ON_LEVEL
     #define BOARD_LCD_H_RES 320
@@ -300,6 +300,8 @@ typedef struct _lcd_t
 
     esp_lcd_panel_handle_t panel;
     esp_lcd_panel_io_handle_t io_handle;
+    SemaphoreHandle_t dma_finish_sem;
+    void *lcd_buf;
 } lcd_t;
 
 esp_err_t lcd_init(void);
@@ -309,6 +311,7 @@ void lcd_set_color(int color);
 void lcd_draw_image(int x, int y, int width, int height, const void *buff);
 lcd_t *get_lcd_handle(void);
 esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o, const bool return_fb);
+void lcd_flush(const void *buff);
 
 #ifdef __cplusplus
 }
