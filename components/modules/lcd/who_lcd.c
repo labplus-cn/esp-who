@@ -35,27 +35,27 @@ static QueueHandle_t xQueueFrameI = NULL;
 static QueueHandle_t xQueueFrameO = NULL;
 static bool gReturnFB = true;
 #endif
- static uint8_t isr_cnt = 0;
- static bool finish = false;
+//  static uint8_t isr_cnt = 0;
+//  static bool finish = false;
 static bool IRAM_ATTR lcd_dma_complete_callback(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
     lcd_t *lcd = (lcd_t *) user_ctx;
 
     // 此处可在IRAM中快速处理，避免临界区
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    // BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     // 通知LVGL：这一帧刷完了，可以画下一帧了
     if (lcd->transfer_done_cb != NULL){
         lcd->transfer_done_cb(lcd->transfer_done_user_data);
     }
    
-    isr_cnt++;
-    finish = true;
-    // 或者释放信号量，唤醒绘制任务
-    xSemaphoreGiveFromISR(lcd->dma_finish_sem, &xHigherPriorityTaskWoken);
+    // isr_cnt++;
+    // finish = true;
+    // // 或者释放信号量，唤醒绘制任务
+    // xSemaphoreGiveFromISR(lcd->dma_finish_sem, &xHigherPriorityTaskWoken);
 
-    if (xHigherPriorityTaskWoken == pdTRUE) {
-        // portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-    }
+    // if (xHigherPriorityTaskWoken == pdTRUE) {
+    //     // portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    // }
 
     return true;
 }
@@ -88,7 +88,7 @@ esp_err_t lcd_init(void)
 {
     if(!lcd){
         lcd = calloc(1, sizeof(lcd_t));
-        lcd->dma_finish_sem = xSemaphoreCreateBinary();
+        // lcd->dma_finish_sem = xSemaphoreCreateBinary();
         // lcd->lcd_buf = (uint16_t *)heap_caps_aligned_alloc(32, AREA_BYTES,   MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         lcd->lcd_buf = (uint16_t *)heap_caps_aligned_alloc(32, BOARD_LCD_H_RES*BOARD_LCD_V_RES*2,  MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
         if(!lcd->lcd_buf){
