@@ -41,7 +41,7 @@ static bool IRAM_ATTR lcd_dma_complete_callback(esp_lcd_panel_io_handle_t panel_
     lcd_t *lcd = (lcd_t *) user_ctx;
 
     // 此处可在IRAM中快速处理，避免临界区
-    // BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     // 通知LVGL：这一帧刷完了，可以画下一帧了
     if (lcd->transfer_done_cb != NULL){
@@ -51,11 +51,11 @@ static bool IRAM_ATTR lcd_dma_complete_callback(esp_lcd_panel_io_handle_t panel_
     // isr_cnt++;
     // finish = true;
     // // 或者释放信号量，唤醒绘制任务
-    // xSemaphoreGiveFromISR(lcd->dma_finish_sem, &xHigherPriorityTaskWoken);
+    xSemaphoreGiveFromISR(lcd->dma_finish_sem, &xHigherPriorityTaskWoken);
 
-    // if (xHigherPriorityTaskWoken == pdTRUE) {
-    //     // portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-    // }
+    if (xHigherPriorityTaskWoken == pdTRUE) {
+        // portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    }
 
     return true;
 }
@@ -88,9 +88,9 @@ esp_err_t lcd_init(void)
 {
     if(!lcd){
         lcd = calloc(1, sizeof(lcd_t));
-        // lcd->dma_finish_sem = xSemaphoreCreateBinary();
-        // lcd->lcd_buf = (uint16_t *)heap_caps_aligned_alloc(32, AREA_BYTES,   MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        lcd->lcd_buf = (uint16_t *)heap_caps_aligned_alloc(32, BOARD_LCD_H_RES*BOARD_LCD_V_RES*2,  MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        lcd->dma_finish_sem = xSemaphoreCreateBinary();
+        // lcd->lcd_buf = (uint16_t *)heap_caps_aligned_alloc(32, AREA_BYTES,   MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        lcd->lcd_buf = (uint16_t *)heap_caps_aligned_alloc(32, BOARD_LCD_H_RES*BOARD_LCD_V_RES*2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);  // MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
         if(!lcd->lcd_buf){
             ESP_LOGE("TAG", "lcd buff calloc error.");
             return ESP_LOG_ERROR;
@@ -191,15 +191,9 @@ esp_err_t lcd_deinit(void)
 
 void lcd_draw_logo(void)
 {
-    uint16_t *pixels = (uint16_t *)heap_caps_malloc((logo_en_320x172_lcd_width * logo_en_320x172_lcd_height) * sizeof(uint16_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
-    if (NULL == pixels)
-    {
-        ESP_LOGE(TAG, "Memory for bitmap is not enough");
-        return;
-    }
-    memcpy(pixels, logo_en_320x172_lcd, (logo_en_320x172_lcd_width * logo_en_320x172_lcd_height) * sizeof(uint16_t));
-    esp_lcd_panel_draw_bitmap(lcd->panel, 0, 0, logo_en_320x172_lcd_width, logo_en_320x172_lcd_height, (uint16_t *)pixels);
-    heap_caps_free(pixels);
+    memcpy(lcd->lcd_buf, logo_en_320x172_lcd, BOARD_LCD_H_RES * BOARD_LCD_V_RES * sizeof(uint16_t));
+    xSemaphoreTake(lcd->dma_finish_sem, portMAX_DELAY);
+    esp_lcd_panel_draw_bitmap(lcd->panel, 0, 0, BOARD_LCD_H_RES, BOARD_LCD_V_RES, (uint16_t *)lcd->lcd_buf);
 }
 
 void lcd_set_color(int color)
@@ -234,20 +228,18 @@ void lcd_flush(const void *buff)
         // uint32_t t1 = esp_timer_get_time();
         // uint32_t y_off = 0;
         // for(uint8_t j = 0; j < AREA_NUMS; j++){
+        //     xSemaphoreTake(lcd->dma_finish_sem, portMAX_DELAY);
         //     for(uint32_t i = 0; i < AREA_WORD; i++){
         //         buf_tmp[i] = __builtin_bswap16(buf[y_off + i]);
         //     }
         //     esp_lcd_panel_draw_bitmap(lcd->panel, 0, AREA_LINES*j, BOARD_LCD_H_RES, AREA_LINES*(j+1), buf_tmp);
-            
-        //     // ESP_LOGE("modlcd", "%d\n", isr_cnt);
-        //     // xSemaphoreTake(lcd->dma_finish_sem, portMAX_DELAY);
-        //     // vTaskDelay(pdMS_TO_TICKS(8));
         //     y_off += AREA_WORD;
         // }
 
-        uint32_t cnt = BOARD_LCD_H_RES*BOARD_LCD_V_RES;
+        uint32_t cnt = BOARD_LCD_H_RES * BOARD_LCD_V_RES;
         for(uint32_t i =0; i < cnt; i++ )
             buf_tmp[i] = __builtin_bswap16(buf[i]);
+        xSemaphoreTake(lcd->dma_finish_sem, portMAX_DELAY);
         esp_lcd_panel_draw_bitmap(lcd->panel, 0, 0, BOARD_LCD_H_RES, BOARD_LCD_V_RES, buf_tmp);
 
         // ESP_LOGE("modlcd", "%ld\n", (uint32_t)esp_timer_get_time() - t1);  
