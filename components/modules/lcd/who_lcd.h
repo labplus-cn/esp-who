@@ -12,7 +12,7 @@ extern "C"
 #include "driver/gpio.h"
 #include "esp_lcd_types.h"
 
-#if CONFIG_MPYTHON_PRO_BOARD
+#if CONFIG_MPYTHON_V3_BOARD
     #define BOARD_LCD_MOSI 37
     #define BOARD_LCD_MISO -1
     #define BOARD_LCD_SCK 36
