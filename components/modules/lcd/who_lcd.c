@@ -1,40 +1,78 @@
 #include "who_lcd.h"
 #include <stdint.h>
 #include <string.h>
-#if CONFIG_MPYTHON_V3_BOARD
-#include "logo_mpython_v3_320x172_lcd.h"
-#elif CONFIG_LABPLUS_LEDONG_V2_BOARD
-#include "logo_labplus_ledong_v2_320x172_lcd.h"
-#elif CONFIG_LABPLUS_XUNFEI_JS_PRIMARY_BOARD || CONFIG_LABPLUS_XUNFEI_JS_MIDDLE_BOARD
-#include "logo_xunfei_320x172_lcd.h"
-#endif
-#include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_jd9853.h"
-#include "esp_lcd_panel_ops.h"
+// #if CONFIG_MPYTHON_V3_BOARD
+// #include "logo_mpython_v3_320x172_lcd.h"
+// #elif CONFIG_LABPLUS_LEDONG_V2_BOARD
+// #include "logo_labplus_ledong_v2_320x172_lcd.h"
+// #elif CONFIG_LABPLUS_XUNFEI_JS_PRIMARY_BOARD || CONFIG_LABPLUS_XUNFEI_JS_MIDDLE_BOARD
+// #include "logo_xunfei_320x172_lcd.h"
+// #endif
+// #include "esp_lcd_panel_io.h"
+// #include "esp_lcd_panel_jd9853.h"
+// #include "esp_lcd_panel_ops.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "esp_camera.h"
-#include "driver/i2c.h"
+// #include "driver/i2c.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "esp_board_manager.h"
+#include "dev_display_lcd.h"
 
 static const char *TAG = "who_lcd";
 
-#define AREA_BYTES 27520 //(43*320*2)
-#define AREA_WORD  13760
-#define AREA_LINES 43
-#define AREA_NUMS  4
+// #define AREA_BYTES 27520 //(43*320*2)
+// #define AREA_WORD  13760
+// #define AREA_LINES 43
+// #define AREA_NUMS  4
 
-bool is_lcd_init = false;
-lcd_t *lcd = NULL;
+// bool is_lcd_init = false;
+// lcd_t *lcd = NULL;
 
 #if CONFIG_LABPLUS_LEDONG_V2_BOARD || CONFIG_LABPLUS_XUNFEI_JS_PRIMARY_BOARD
 static QueueHandle_t xQueueFrameI = NULL;
 static QueueHandle_t xQueueFrameO = NULL;
 static bool gReturnFB = true;
+
+static void task_process_handler(void *arg)
+{
+    camera_fb_t *frame = NULL;
+    dev_display_lcd_handles_t *disp_handle;
+    esp_board_manager_get_device_handle("display_lcd", (void **)&disp_handle);
+
+    while (true){
+        if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY)){
+            lcd_flush(disp_handle, frame->buf);
+            // esp_lcd_panel_draw_bitmap(lcd->panel, 0, 0, (frame->width > 320)? 320 : frame->width, (frame->height > 172)? 172 : frame->height, (uint16_t *)frame->buf);
+            if (xQueueFrameO){
+                xQueueSend(xQueueFrameO, &frame, portMAX_DELAY);
+            }else if (gReturnFB){
+                esp_camera_fb_return(frame);
+            }else{
+                free(frame);
+            }
+        }
+    }
+}
+
+esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o, const bool return_fb)
+{
+    // lcd_init();
+
+    xQueueFrameI = frame_i;
+    xQueueFrameO = frame_o;
+    gReturnFB = return_fb;
+    xTaskCreatePinnedToCore(task_process_handler, TAG, 4 * 1024, NULL, 5, NULL, 0);
+
+    return ESP_OK;
+}
+
 #endif
+
+/*
 //  static uint8_t isr_cnt = 0;
 //  static bool finish = false;
 static bool IRAM_ATTR lcd_dma_complete_callback(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
@@ -250,35 +288,4 @@ lcd_t *get_lcd_handle(void)
 {
     return lcd;
 }
-
-#if CONFIG_LABPLUS_LEDONG_V2_BOARD || CONFIG_LABPLUS_XUNFEI_JS_PRIMARY_BOARD
-static void task_process_handler(void *arg)
-{
-    camera_fb_t *frame = NULL;
-
-    while (true){
-        if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY)){
-            esp_lcd_panel_draw_bitmap(lcd->panel, 0, 0, (frame->width > 320)? 320 : frame->width, (frame->height > 172)? 172 : frame->height, (uint16_t *)frame->buf);
-            if (xQueueFrameO){
-                xQueueSend(xQueueFrameO, &frame, portMAX_DELAY);
-            }else if (gReturnFB){
-                esp_camera_fb_return(frame);
-            }else{
-                free(frame);
-            }
-        }
-    }
-}
-
-esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o, const bool return_fb)
-{
-    lcd_init();
-
-    xQueueFrameI = frame_i;
-    xQueueFrameO = frame_o;
-    gReturnFB = return_fb;
-    xTaskCreatePinnedToCore(task_process_handler, TAG, 4 * 1024, NULL, 5, NULL, 0);
-
-    return ESP_OK;
-}
-#endif
+*/
