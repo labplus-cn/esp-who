@@ -205,7 +205,7 @@ static void task_process_handler(void *arg)
             }
 
             if (xQueueResult && recognize_result.id > 0){
-                ESP_LOGE("recognize", "id: % d", recognize_result.id);
+                ESP_LOGI("recognize", "id: % d", recognize_result.id);
                 msg.type = AI_TYPE_FACE_RECOGNITION;
                 msg.id = recognize_result.id;
                 msg.similarity = recognize_result.similarity;

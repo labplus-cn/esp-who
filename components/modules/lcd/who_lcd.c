@@ -21,6 +21,7 @@
 #include "esp_log.h"
 #include "esp_board_manager.h"
 #include "dev_display_lcd.h"
+#include "esp_lcd_panel_ops.h"
 
 static const char *TAG = "who_lcd";
 
@@ -42,11 +43,13 @@ static void task_process_handler(void *arg)
     camera_fb_t *frame = NULL;
     dev_display_lcd_handles_t *disp_handle;
     esp_board_manager_get_device_handle("display_lcd", (void **)&disp_handle);
+    dev_display_lcd_config_t *cfg = NULL;
+    esp_board_device_get_config_by_handle(disp_handle, (void **)&cfg);
 
     while (true){
         if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY)){
-            lcd_flush(disp_handle, frame->buf);
-            // esp_lcd_panel_draw_bitmap(lcd->panel, 0, 0, (frame->width > 320)? 320 : frame->width, (frame->height > 172)? 172 : frame->height, (uint16_t *)frame->buf);
+            // lcd_flush(disp_handle, frame->buf);
+            esp_lcd_panel_draw_bitmap(disp_handle->panel_handle, 0, 0, cfg->lcd_width, cfg->lcd_height, frame->buf);
             if (xQueueFrameO){
                 xQueueSend(xQueueFrameO, &frame, portMAX_DELAY);
             }else if (gReturnFB){

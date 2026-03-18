@@ -218,8 +218,8 @@ static esp_err_t camera_probe(const camera_config_t *config, camera_model_t *out
     ESP_LOGD(TAG, "Searching for camera address");
     vTaskDelay(10 / portTICK_PERIOD_MS);
 
-    // uint8_t slv_addr = SCCB_Probe();
-    uint8_t slv_addr = GC0328_SCCB_ADDR;
+    uint8_t slv_addr = SCCB_Probe();
+    // uint8_t slv_addr = GC0328_SCCB_ADDR;
     if (slv_addr == 0) {
         ret = ESP_ERR_NOT_FOUND;
         goto err;
