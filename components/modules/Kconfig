@@ -62,7 +62,7 @@ menu "ESP-WHO Configuration"
 
         choice CAMERA_MODULE
             bool "Select Camera Pinout"
-            default CAMERA_MODULE_WROVER_KIT
+            default CAMERA_MODULE_LABPLUS_LEDONG_V2_BOARD
             help
                 Select Camera Pinout.
 
@@ -84,6 +84,12 @@ menu "ESP-WHO Configuration"
                 bool "ESP32-CAM by AI-Thinker"
             config CAMERA_MODULE_CUSTOM
                 bool "Custom Camera Pinout"
+            config CAMERA_MODULE_LABPLUS_LEDONG_V2_BOARD
+                bool "labplus_Ledong_v2_Pinout"
+            config CAMERA_MODULE_LABPLUS_XUNFEI_JS_PRIMARY_BOARD
+                bool "labplus_xunfei_js_primary_Pinout"
+            config CAMERA_MODULE_LABPLUS_XUNFEI_JS_MIDDLE_BOARD
+                bool "labplus_xunfei_js_middle_Pinout"
         endchoice
 
         config CAMERA_PIN_PWDN

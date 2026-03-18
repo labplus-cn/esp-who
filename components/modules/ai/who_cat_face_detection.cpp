@@ -7,6 +7,7 @@
 #include "cat_face_detect_mn03.hpp"
 
 #include "who_ai_utils.hpp"
+#include "who_c_wrapper.h"
 
 static const char *TAG = "cat_face_detection";
 
@@ -22,39 +23,33 @@ static void task_process_handler(void *arg)
 {
     camera_fb_t *frame = NULL;
     CatFaceDetectMN03 detector(0.4F, 0.3F, 10, 0.3F);
+    ai_msg_t msg;
 
     while (true)
     {
         if (gEvent)
         {
             bool is_detected = false;
-            if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY))
-            {
+            if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY)){
                 std::list<dl::detect::result_t> &detect_results = detector.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3});
-                if (detect_results.size() > 0)
-                {
-                    draw_detection_result((uint16_t *)frame->buf, frame->height, frame->width, detect_results);
-                    print_detection_result(detect_results);
+                if (detect_results.size() > 0){
+                    draw_detection_result((uint16_t *)frame->buf, frame->height, frame->width, detect_results, &msg);
+                    print_detection_result(detect_results, &msg);
                     is_detected = true;
                 }
             }
 
-            if (xQueueFrameO)
-            {
+            if (xQueueFrameO){
                 xQueueSend(xQueueFrameO, &frame, portMAX_DELAY);
-            }
-            else if (gReturnFB)
-            {
+            }else if (gReturnFB){
                 esp_camera_fb_return(frame);
-            }
-            else
-            {
+            }else{
                 free(frame);
             }
 
-            if (xQueueResult)
-            {
-                xQueueSend(xQueueResult, &is_detected, portMAX_DELAY);
+            if (xQueueResult && is_detected){
+                msg.type = AI_TYPE_CAT_FACE_DETECTION;
+                xQueueSend(xQueueResult, &msg, portMAX_DELAY);
             }
         }
     }

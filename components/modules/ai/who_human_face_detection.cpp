@@ -8,6 +8,7 @@
 #include "human_face_detect_mnp01.hpp"
 
 #include "who_ai_utils.hpp"
+#include "who_c_wrapper.h"
 
 #define TWO_STAGE_ON 1
 
@@ -28,14 +29,14 @@ static void task_process_handler(void *arg)
 #if TWO_STAGE_ON
     HumanFaceDetectMNP01 detector2(0.4F, 0.3F, 10);
 #endif
+    ai_msg_t msg;
 
     while (true)
     {
         if (gEvent)
         {
             bool is_detected = false;
-            if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY))
-            {
+            if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY)){
 #if TWO_STAGE_ON
                 std::list<dl::detect::result_t> &detect_candidates = detector.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3});
                 std::list<dl::detect::result_t> &detect_results = detector2.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_candidates);
@@ -43,30 +44,24 @@ static void task_process_handler(void *arg)
                 std::list<dl::detect::result_t> &detect_results = detector.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3});
 #endif
 
-                if (detect_results.size() > 0)
-                {
-                    draw_detection_result((uint16_t *)frame->buf, frame->height, frame->width, detect_results);
-                    print_detection_result(detect_results);
+                if (detect_results.size() > 0){
+                    draw_detection_result((uint16_t *)frame->buf, frame->height, frame->width, detect_results, &msg);
+                    print_detection_result(detect_results, &msg);
                     is_detected = true;
                 }
             }
 
-            if (xQueueFrameO)
-            {
+            if (xQueueFrameO){
                 xQueueSend(xQueueFrameO, &frame, portMAX_DELAY);
-            }
-            else if (gReturnFB)
-            {
+            }else if (gReturnFB){
                 esp_camera_fb_return(frame);
-            }
-            else
-            {
+            }else{
                 free(frame);
             }
 
-            if (xQueueResult)
-            {
-                xQueueSend(xQueueResult, &is_detected, portMAX_DELAY);
+            if (xQueueResult && is_detected){
+                msg.type = AI_TYPE_FACE_DETECTION;
+                xQueueSend(xQueueResult, &msg, portMAX_DELAY);
             }
         }
     }

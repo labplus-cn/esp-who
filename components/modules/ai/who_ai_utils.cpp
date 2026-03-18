@@ -17,17 +17,18 @@ static const char *TAG = "ai_utils";
 // |  Blue | 0b0001111100000000 | 0xFF0000 |
 // +-------+--------------------+----------+
 
-void draw_detection_result(uint16_t *image_ptr, int image_height, int image_width, std::list<dl::detect::result_t> &results)
+void draw_detection_result(uint16_t *image_ptr, int image_height, int image_width, std::list<dl::detect::result_t> &results, ai_msg_t *msg)
 {
     int i = 0;
+    msg->element_num = 0;
     for (std::list<dl::detect::result_t>::iterator prediction = results.begin(); prediction != results.end(); prediction++, i++)
     {
         dl::image::draw_hollow_rectangle(image_ptr, image_height, image_width,
-                                         DL_MAX(prediction->box[0], 0),
-                                         DL_MAX(prediction->box[1], 0),
-                                         DL_MAX(prediction->box[2], 0),
-                                         DL_MAX(prediction->box[3], 0),
-                                         0b1110000000000111);
+            DL_MAX(prediction->box[0], 0),
+            DL_MAX(prediction->box[1], 0),
+            DL_MAX(prediction->box[2], 0),
+            DL_MAX(prediction->box[3], 0),
+            0b1110000000000111);
 
         if (prediction->keypoint.size() == 10)
         {
@@ -37,20 +38,37 @@ void draw_detection_result(uint16_t *image_ptr, int image_height, int image_widt
             dl::image::draw_point(image_ptr, image_height, image_width, DL_MAX(prediction->keypoint[6], 0), DL_MAX(prediction->keypoint[7], 0), 4, 0b0001111100000000); // right eye
             dl::image::draw_point(image_ptr, image_height, image_width, DL_MAX(prediction->keypoint[8], 0), DL_MAX(prediction->keypoint[9], 0), 4, 0b0001111100000000); // mouth right corner
         }
+
+        msg->element_num++;
+        if(msg->element_num <= 5){ //最多允许识别5个人脸
+            msg->box[i][0] = DL_MAX(prediction->box[0], 0);
+            msg->box[i][1] = DL_MAX(prediction->box[1], 0);
+            msg->box[i][2] = DL_MAX(prediction->box[2], 0);
+            msg->box[i][3] = DL_MAX(prediction->box[3], 0);
+            for(int j = 0; j < 10; j++){
+                msg->keypoint[i][j] = DL_MAX(prediction->keypoint[j], 0);
+            }
+        }
     }
 }
 
-void draw_detection_result(uint8_t *image_ptr, int image_height, int image_width, std::list<dl::detect::result_t> &results)
+void draw_detection_result(uint8_t *image_ptr, int image_height, int image_width, std::list<dl::detect::result_t> &results, ai_msg_t *msg)
 {
     int i = 0;
+    msg->element_num = 0;
     for (std::list<dl::detect::result_t>::iterator prediction = results.begin(); prediction != results.end(); prediction++, i++)
     {
         dl::image::draw_hollow_rectangle(image_ptr, image_height, image_width,
-                                         DL_MAX(prediction->box[0], 0),
-                                         DL_MAX(prediction->box[1], 0),
-                                         DL_MAX(prediction->box[2], 0),
-                                         DL_MAX(prediction->box[3], 0),
-                                         0x00FF00);
+            DL_MAX(prediction->box[0], 0),
+            DL_MAX(prediction->box[1], 0),
+            DL_MAX(prediction->box[2], 0),
+            DL_MAX(prediction->box[3], 0),
+            0x00FF00);
+
+        msg->box[i][0] = DL_MAX(prediction->box[0], 0);
+        msg->box[i][1] = DL_MAX(prediction->box[1], 0);
+        msg->box[i][2] = DL_MAX(prediction->box[2], 0);
+        msg->box[i][3] = DL_MAX(prediction->box[3], 0);
 
         if (prediction->keypoint.size() == 10)
         {
@@ -60,10 +78,21 @@ void draw_detection_result(uint8_t *image_ptr, int image_height, int image_width
             dl::image::draw_point(image_ptr, image_height, image_width, DL_MAX(prediction->keypoint[6], 0), DL_MAX(prediction->keypoint[7], 0), 4, 0xFF0000); // right eye
             dl::image::draw_point(image_ptr, image_height, image_width, DL_MAX(prediction->keypoint[8], 0), DL_MAX(prediction->keypoint[9], 0), 4, 0xFF0000); // mouth right corner
         }
+
+        msg->element_num++;
+        if(msg->element_num <= 5){
+            msg->box[i][0] = DL_MAX(prediction->box[0], 0);
+            msg->box[i][1] = DL_MAX(prediction->box[1], 0);
+            msg->box[i][2] = DL_MAX(prediction->box[2], 0);
+            msg->box[i][3] = DL_MAX(prediction->box[3], 0);
+            for(int j = 0; j < 10; j++){
+                msg->keypoint[i][j] = DL_MAX(prediction->keypoint[j], 0);
+            }
+        }
     }
 }
 
-void print_detection_result(std::list<dl::detect::result_t> &results)
+void print_detection_result(std::list<dl::detect::result_t> &results, ai_msg_t *msg)
 {
     int i = 0;
     for (std::list<dl::detect::result_t>::iterator prediction = results.begin(); prediction != results.end(); prediction++, i++)

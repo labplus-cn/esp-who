@@ -4,6 +4,7 @@
 #include "esp_camera.h"
 
 #include "dl_image.hpp"
+#include "who_c_wrapper.h"
 
 static const char *TAG = "motion_detection";
 
@@ -18,6 +19,7 @@ static void task_process_handler(void *arg)
 {
     camera_fb_t *frame1 = NULL;
     camera_fb_t *frame2 = NULL;
+    ai_msg_t msg;
 
     while (true)
     {
@@ -49,9 +51,10 @@ static void task_process_handler(void *arg)
                 esp_camera_fb_return(frame2);
             }
 
-            if (xQueueResult)
+            if (xQueueResult && is_moved)
             {
-                xQueueSend(xQueueResult, &is_moved, portMAX_DELAY);
+                msg.type = AI_TYPE_MOTION_DEECTION;
+                xQueueSend(xQueueResult, &msg, portMAX_DELAY);
             }
         }
     }

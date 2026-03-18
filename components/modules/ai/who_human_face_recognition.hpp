@@ -17,5 +17,5 @@ typedef enum
 void register_human_face_recognition(QueueHandle_t frame_i,
                                      QueueHandle_t event,
                                      QueueHandle_t result,
-                                     QueueHandle_t frame_o = NULL,
-                                     const bool camera_fb_return = false);
+                                     QueueHandle_t frame_o,
+                                     const bool camera_fb_return);

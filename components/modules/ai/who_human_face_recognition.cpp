@@ -19,6 +19,7 @@
 #endif
 
 #include "who_ai_utils.hpp"
+#include "who_c_wrapper.h"
 
 using namespace std;
 using namespace dl;
@@ -88,6 +89,7 @@ static void task_process_handler(void *arg)
     camera_fb_t *frame = NULL;
     HumanFaceDetectMSR01 detector(0.3F, 0.3F, 10, 0.3F);
     HumanFaceDetectMNP01 detector2(0.4F, 0.3F, 10);
+    ai_msg_t msg;
 
 #if CONFIG_MFN_V1
 #if CONFIG_S8
@@ -105,7 +107,7 @@ static void task_process_handler(void *arg)
     {
         xSemaphoreTake(xMutex, portMAX_DELAY);
         _gEvent = gEvent;
-        gEvent = DETECT;
+        gEvent = DETECT; //做完其它动作（添加、删除、识别）动作后，再转入人脸检测状态，因此其它态是暂态，收到相关事件后，只执行一次。
         xSemaphoreGive(xMutex);
 
         if (_gEvent)
@@ -114,13 +116,16 @@ static void task_process_handler(void *arg)
 
             if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY))
             {
+                //先做人脸检测
                 std::list<dl::detect::result_t> &detect_candidates = detector.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3});
                 std::list<dl::detect::result_t> &detect_results = detector2.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_candidates);
 
                 if (detect_results.size() == 1)
                     is_detected = true;
 
-                if (is_detected)
+                recognize_result.id = -1;
+
+                if (is_detected) //检测到人脸后再做人脸录入、识别等操作
                 {
                     switch (_gEvent)
                     {
@@ -132,18 +137,17 @@ static void task_process_handler(void *arg)
 
                     case RECOGNIZE:
                         recognize_result = recognizer->recognize((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint);
-                        print_detection_result(detect_results);
+                        print_detection_result(detect_results, &msg);
                         if (recognize_result.id > 0)
                             ESP_LOGI("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
                         else
-                            ESP_LOGE("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
+                            ESP_LOGI("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
                         frame_show_state = SHOW_STATE_RECOGNIZE;
                         break;
 
                     case DELETE:
                         vTaskDelay(10);
                         recognizer->delete_id(true);
-                        ESP_LOGE("DELETE", "% d IDs left", recognizer->get_enrolled_id_num());
                         frame_show_state = SHOW_STATE_DELETE;
                         break;
 
@@ -152,7 +156,7 @@ static void task_process_handler(void *arg)
                     }
                 }
 
-                if (frame_show_state != SHOW_STATE_IDLE)
+                if (frame_show_state != SHOW_STATE_IDLE) //做些打印工作
                 {
                     static int frame_count = 0;
                     switch (frame_show_state)
@@ -186,29 +190,26 @@ static void task_process_handler(void *arg)
                 if (detect_results.size())
                 {
 #if !CONFIG_IDF_TARGET_ESP32S3
-                    print_detection_result(detect_results);
+                    print_detection_result(detect_results, &msg);
 #endif
-                    draw_detection_result((uint16_t *)frame->buf, frame->height, frame->width, detect_results);
+                    draw_detection_result((uint16_t *)frame->buf, frame->height, frame->width, detect_results, &msg);
                 }
             }
 
-            if (xQueueFrameO)
-            {
-
+            if (xQueueFrameO){
                 xQueueSend(xQueueFrameO, &frame, portMAX_DELAY);
-            }
-            else if (gReturnFB)
-            {
+            }else if (gReturnFB){
                 esp_camera_fb_return(frame);
-            }
-            else
-            {
+            }else{
                 free(frame);
             }
 
-            if (xQueueResult && is_detected)
-            {
-                xQueueSend(xQueueResult, &recognize_result, portMAX_DELAY);
+            if (xQueueResult && recognize_result.id > 0){
+                ESP_LOGI("recognize", "id: % d", recognize_result.id);
+                msg.type = AI_TYPE_FACE_RECOGNITION;
+                msg.id = recognize_result.id;
+                msg.similarity = recognize_result.similarity;
+                xQueueSend(xQueueResult, &msg, portMAX_DELAY);
             }
         }
     }
@@ -243,3 +244,4 @@ void register_human_face_recognition(const QueueHandle_t frame_i,
     if (xQueueEvent)
         xTaskCreatePinnedToCore(task_event_handler, TAG, 4 * 1024, NULL, 5, NULL, 1);
 }
+
